@@ -1,0 +1,15 @@
+numpy
+pandas
+scipy
+scikit-learn
+torch
+torch_geometric
+scanpy
+anndata
+h5py
+matplotlib
+tqdm
+esda
+libpysal
+# Optional: only needed for mclust clustering (requires an R installation with the mclust package)
+# rpy2
