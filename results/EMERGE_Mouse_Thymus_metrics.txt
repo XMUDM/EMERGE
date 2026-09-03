@@ -1,0 +1,11 @@
+Mean_Cluster_Moran_I=0.672457
+Cluster_1_Moran_I=0.607320
+Cluster_2_Moran_I=0.735016
+Cluster_3_Moran_I=0.815584
+Cluster_4_Moran_I=0.527929
+Cluster_5_Moran_I=0.626947
+Cluster_6_Moran_I=0.482654
+Cluster_7_Moran_I=0.808700
+Cluster_8_Moran_I=0.775504
+Train_Time=100.37
+k_noise=0
