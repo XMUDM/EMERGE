@@ -9,6 +9,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 import torch
 import scanpy as sc
 import numpy as np
+import pandas as pd
 import argparse
 import time
 import scipy.sparse as sp
@@ -42,11 +43,15 @@ def main(args):
     elif args.data_type == 'MISAR':
         adata_omics1 = sc.read_h5ad(args.file_fold + '/adata_RNA.h5ad')
         adata_omics2 = sc.read_h5ad(args.file_fold + '/adata_peak.h5ad')
+    elif args.data_type == 'RNA-METABOLITE':
+        # Visium RNA + MALDI-MSI metabolite (SpaMICS mouse brain, e.g. SPIDER dataset_MouseBrain)
+        adata_omics1 = sc.read_h5ad(os.path.join(args.file_fold, args.rna_file))
+        adata_omics2 = sc.read_h5ad(os.path.join(args.file_fold, args.meta_file))
 
     adata_omics1.var_names_make_unique()
     adata_omics2.var_names_make_unique()
 
-    random_seed = 2024
+    random_seed = args.seed
     fix_seed(random_seed)
 
     # Preprocess
@@ -72,7 +77,7 @@ def main(args):
             adata_omics2 = clr_normalize_each_cell(adata_omics2)
             sc.pp.scale(adata_omics2)
             adata_omics2.obsm['feat'] = pca(adata_omics2, n_comps=adata_omics2.n_vars - 1)
-        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed)
+        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed, seed=args.seed)
 
     elif args.data_type == 'Spatial-epigenome-transcriptome':
         # RNA
@@ -90,7 +95,7 @@ def main(args):
             sc.pp.highly_variable_genes(adata_omics2, flavor="seurat_v3", n_top_genes=3000)
             lsi(adata_omics2, use_highly_variable=False, n_components=51)
         adata_omics2.obsm['feat'] = adata_omics2.obsm['X_lsi'].copy()
-        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed)
+        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed, seed=args.seed)
 
     elif args.data_type == 'SPOTS':
         # RNA
@@ -105,7 +110,7 @@ def main(args):
         adata_omics2 = clr_normalize_each_cell(adata_omics2)
         sc.pp.scale(adata_omics2)
         adata_omics2.obsm['feat'] = pca(adata_omics2, n_comps=adata_omics2.n_vars - 1)
-        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed)
+        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed, seed=args.seed)
         
     elif args.data_type == 'Stereo-CITE-seq':
         # RNA
@@ -120,7 +125,31 @@ def main(args):
         # Protein
         adata_omics2 = clr_normalize_each_cell(adata_omics2)
         adata_omics2.obsm['feat'] = pca(adata_omics2, n_comps=adata_omics2.n_vars - 1)
-        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed)
+        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed, seed=args.seed)
+
+    elif args.data_type == 'RNA-METABOLITE':
+        # RNA: same pipeline as the other RNA branches
+        sc.pp.filter_genes(adata_omics1, min_cells=10)
+        sc.pp.highly_variable_genes(adata_omics1, flavor="seurat_v3", n_top_genes=args.n_top_genes)
+        sc.pp.normalize_total(adata_omics1, target_sum=1e4)
+        sc.pp.log1p(adata_omics1)
+        sc.pp.scale(adata_omics1)
+        adata_omics1_high = adata_omics1[:, adata_omics1.var['highly_variable']]
+        adata_omics1.obsm['feat'] = pca(adata_omics1_high, n_comps=args.rna_pcs)
+
+        # Metabolite: continuous MALDI-MSI intensities, not count data — follow the
+        # SpaMICS/SPIDER protocol (1%-spot filter -> HVG -> TIC normalize -> log1p ->
+        # scale); CLR is designed for compositional counts and does not apply here.
+        sc.pp.filter_genes(adata_omics2, min_cells=int(adata_omics2.shape[0] * 0.01))
+        sc.pp.highly_variable_genes(adata_omics2, flavor='seurat_v3',
+                                    n_top_genes=min(args.meta_hvg, adata_omics2.n_vars))
+        sc.pp.normalize_total(adata_omics2, target_sum=1e4)
+        sc.pp.log1p(adata_omics2)
+        sc.pp.scale(adata_omics2)
+        adata_omics2_high = adata_omics2[:, adata_omics2.var['highly_variable']]
+        adata_omics2.obsm['feat'] = pca(adata_omics2_high, n_comps=args.meta_pcs)
+        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, n_neighbors=args.spatial_knn,
+                                        k_noise=args.k_noise, noise_seed=args.noise_seed, seed=args.seed)
 
     elif args.data_type == 'MISAR':
         # RNA
@@ -138,12 +167,13 @@ def main(args):
             sc.pp.highly_variable_genes(adata_omics2, flavor="seurat_v3", n_top_genes=3000)
             lsi(adata_omics2, use_highly_variable=False, n_components=51)
         adata_omics2.obsm['feat'] = adata_omics2.obsm['X_lsi'].copy()
-        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed)
+        data = construct_neighbor_graph(adata_omics1, adata_omics2, datatype=args.data_type, Arg=args, k_noise=args.k_noise, noise_seed=args.noise_seed, seed=args.seed)
     
     else:
         assert 0
 
-    model = Train_EMERGE(data, datatype=args.data_type, device=device, Arg=args)
+    model = Train_EMERGE(data, datatype=args.data_type, device=device, epochs=args.epochs,
+                         random_seed=args.seed, Arg=args)
 
     start_time = time.time()
 
@@ -160,7 +190,8 @@ def main(args):
 
     # Clustering
     tool = 'mclust' # mclust, leiden, and louvain
-    clustering(adata, key='EMERGE', add_key='EMERGE', n_clusters=args.n_clusters, method=tool, use_pca=True)
+    clustering(adata, key='EMERGE', add_key='EMERGE', n_clusters=args.n_clusters, method=tool,
+               use_pca=True, random_seed=args.seed)
 
     label = adata.obs['EMERGE']
     label_array = np.array(label.copy(), dtype=int)
@@ -267,15 +298,24 @@ def main(args):
         adata.obsm['spatial'] = np.rot90(np.rot90(np.rot90(np.array(adata.obsm['spatial'])).T).T).T
         adata.obsm['spatial'][:, 1] = -1 * adata.obsm['spatial'][:, 1]
 
-    spot_size = 200
+    spot_size = 30
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    fig, ax_list = plt.subplots(1, 2, figsize=(8, 3))
     sc.pp.neighbors(adata, use_rep='EMERGE', n_neighbors=500)
     sc.tl.umap(adata)
-    sc.pl.umap(adata, color='EMERGE', ax=ax_list[0], title='EMERGE', s=spot_size, show=False)
-    sc.pl.embedding(adata, basis='spatial', color='EMERGE', ax=ax_list[1], title='EMERGE', s=spot_size, show=False)
+    if gt_array is not None:
+        adata.obs['Ground Truth'] = pd.Categorical(gt_array.astype(str))
+        fig, ax_list = plt.subplots(1, 3, figsize=(12, 3))
+        sc.pl.umap(adata, color='EMERGE', ax=ax_list[0], title='EMERGE', s=spot_size, show=False)
+        sc.pl.embedding(adata, basis='spatial', color='EMERGE', ax=ax_list[1], title='EMERGE', s=spot_size, show=False)
+        sc.pl.embedding(adata, basis='spatial', color='Ground Truth', ax=ax_list[2], title='Ground Truth', s=spot_size, show=False)
+    else:
+        fig, ax_list = plt.subplots(1, 2, figsize=(8, 3))
+        sc.pl.umap(adata, color='EMERGE', ax=ax_list[0], title='EMERGE', s=spot_size, show=False)
+        sc.pl.embedding(adata, basis='spatial', color='EMERGE', ax=ax_list[1], title='EMERGE', s=spot_size, show=False)
     plt.tight_layout(w_pad=0.3)
-    plt.savefig(args.vis_out_path)
+    plt.savefig(args.vis_out_path, dpi=200, bbox_inches='tight')
 
     adata.write_h5ad(args.save_path)
 
@@ -288,6 +328,22 @@ if __name__ == "__main__":
                         help='RNA h5ad filename inside file_fold')
     parser.add_argument('--adt_file', type=str, default='adata_ADT.h5ad',
                         help='ADT/protein h5ad filename inside file_fold')
+    parser.add_argument('--meta_file', type=str, default='adata_meta.h5ad',
+                        help='metabolite h5ad filename inside file_fold (RNA-METABOLITE)')
+    parser.add_argument('--n_top_genes', type=int, default=3000,
+                        help='RNA HVG count')
+    parser.add_argument('--rna_pcs', type=int, default=50,
+                        help='RNA PCA components (RNA-METABOLITE)')
+    parser.add_argument('--meta_hvg', type=int, default=1000,
+                        help='metabolite HVG count (RNA-METABOLITE)')
+    parser.add_argument('--meta_pcs', type=int, default=50,
+                        help='metabolite PCA components (RNA-METABOLITE)')
+    parser.add_argument('--spatial_knn', type=int, default=6,
+                        help='spatial KNN neighbors used to build the spatial graph')
+    parser.add_argument('--epochs', type=int, default=600,
+                        help='training epochs (RNA-METABOLITE)')
+    parser.add_argument('--seed', type=int, default=2024,
+                        help='random seed (preprocessing, training, clustering)')
     parser.add_argument('--data_type', type=str,
                         help='data_type')
     parser.add_argument('--n_clusters', type=int,
