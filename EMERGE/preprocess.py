@@ -20,7 +20,7 @@ from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-def construct_neighbor_graph(adata_omics1, adata_omics2, datatype='SPOTS', n_neighbors=6, Arg=None, k_noise=0, noise_seed=42):
+def construct_neighbor_graph(adata_omics1, adata_omics2, datatype='SPOTS', n_neighbors=6, Arg=None, k_noise=0, noise_seed=42, seed=2024):
     """
     Construct neighbor graphs, including feature graph and spatial graph. 
     Feature graph is based expression data while spatial graph is based on cell/spot spatial coordinates.
@@ -44,7 +44,7 @@ def construct_neighbor_graph(adata_omics1, adata_omics2, datatype='SPOTS', n_nei
     # omics1
     cell_position_omics1 = adata_omics1.obsm['spatial']
     cell_position_omics2 = adata_omics2.obsm['spatial'] # should be identical to omics1 
-    adj_omics, feature_graph_omics1, feature_graph_omics2, indices = construct_graph_by_coordinate(cell_position_omics1, adata_omics1, adata_omics2, n_neighbors=n_neighbors, k=Arg.KNN_k, n_clusters=Arg.n_clusters, k_noise=k_noise, noise_seed=noise_seed)
+    adj_omics, feature_graph_omics1, feature_graph_omics2, indices = construct_graph_by_coordinate(cell_position_omics1, adata_omics1, adata_omics2, n_neighbors=n_neighbors, k=Arg.KNN_k, n_clusters=Arg.n_clusters, k_noise=k_noise, noise_seed=noise_seed, seed=seed)
     adata_omics1.uns['adj_spatial'] = adj_omics
     adata_omics2.uns['adj_spatial'] = adj_omics
     adata_omics1.obsm['adj_feature'], adata_omics2.obsm['adj_feature'] = feature_graph_omics1, feature_graph_omics2
@@ -151,7 +151,7 @@ def construct_graph_by_feature(n_samples, dist_1, dist_2, k, adata_omics1, adata
     return feature_graph_omics1
 
 
-def construct_graph_by_coordinate(cell_position, adata_omics1, adata_omics2, n_neighbors=6, k=20, n_clusters=10, k_noise=0, noise_seed=42):
+def construct_graph_by_coordinate(cell_position, adata_omics1, adata_omics2, n_neighbors=6, k=20, n_clusters=10, k_noise=0, noise_seed=42, seed=2024):
     """Constructing spatial neighbor graph according to spatial coordinates."""
     # spatial graph
     nbrs = NearestNeighbors(n_neighbors=n_neighbors+1).fit(cell_position)
@@ -165,9 +165,9 @@ def construct_graph_by_coordinate(cell_position, adata_omics1, adata_omics2, n_n
         indices[:, 1:] = apply_noise_to_knn_indices(cell_position, indices[:, 1:], k_noise, k=n_neighbors, seed=noise_seed)
 
     pre_labels = 'raw_cluster'
-    adata_omics1 = mclust_R(adata_omics1, used_obsm='feat', num_cluster=n_clusters)
+    adata_omics1 = mclust_R(adata_omics1, used_obsm='feat', num_cluster=n_clusters, random_seed=seed)
     adata_omics1.obs[pre_labels] = adata_omics1.obs['mclust']
-    adata_omics2 = mclust_R(adata_omics2, used_obsm='feat', num_cluster=n_clusters)
+    adata_omics2 = mclust_R(adata_omics2, used_obsm='feat', num_cluster=n_clusters, random_seed=seed)
     adata_omics2.obs[pre_labels] = adata_omics2.obs['mclust']
 
     # feature similarity

@@ -29,7 +29,7 @@ def mclust_R(adata, num_cluster, modelNames='EEE', used_obsm='emb_pca', random_s
     adata.obs['mclust'] = adata.obs['mclust'].astype('category')
     return adata
 
-def clustering(adata, n_clusters=7, key='emb', add_key='EMERGE', method='mclust', start=1.5, end=3.0, increment=0.5, use_pca=False, n_comps=20):
+def clustering(adata, n_clusters=7, key='emb', add_key='EMERGE', method='mclust', start=1.5, end=3.0, increment=0.5, use_pca=False, n_comps=20, random_seed=2024):
     """\
     Spatial clustering based the latent representation.
 
@@ -63,9 +63,9 @@ def clustering(adata, n_clusters=7, key='emb', add_key='EMERGE', method='mclust'
     
     if method == 'mclust':
        if use_pca: 
-          adata = mclust_R(adata, used_obsm=key + '_pca', num_cluster=n_clusters)
+          adata = mclust_R(adata, used_obsm=key + '_pca', num_cluster=n_clusters, random_seed=random_seed)
        else:
-          adata = mclust_R(adata, used_obsm=key, num_cluster=n_clusters)
+          adata = mclust_R(adata, used_obsm=key, num_cluster=n_clusters, random_seed=random_seed)
        adata.obs[add_key] = adata.obs['mclust']
     elif method == 'leiden':
        if use_pca: 

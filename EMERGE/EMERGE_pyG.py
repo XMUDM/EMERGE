@@ -89,6 +89,10 @@ class Train_EMERGE:
            self.epochs = 1000
            self.weight_factors = [Arg.RNA_weight, Arg.ADT_weight, 1, 1] # [1,5,1,1]
 
+        elif self.datatype == 'RNA-METABOLITE':
+           # Visium RNA + MALDI-MSI metabolite; epochs settable via --epochs
+           self.weight_factors = [Arg.RNA_weight, Arg.ADT_weight, 1, 1]
+
     def train(self):
         self.model = Encoder_overall(self.dim_input1, self.dim_output1, self.dim_input2, self.dim_output2).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate,
