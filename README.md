@@ -1,4 +1,4 @@
-# EMERGE: Learning High-Resolution Representations of Spatial Multi-Omics via Bidirectional Progressive Evolution
+# EMERGE resolves fine-grained tissue architecture from spatial multi-omics through bidirectional progressive evolution
 
 
 ## Repository structure
